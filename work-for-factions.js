@@ -2,7 +2,6 @@ import {
     getNsDataThroughFile, runCommand, getActiveSourceFiles, tryGetBitNodeMultipliers,
     formatDuration, formatMoney, formatNumberShort, disableLogs
 } from './helpers.js'
-/** @typedef {import('./index.js').NS} NS */
 
 const companySpecificConfigs = [
     { name: "NWO", statModifier: 25 },

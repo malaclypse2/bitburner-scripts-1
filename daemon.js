@@ -5,7 +5,6 @@ import {
     tryGetBitNodeMultipliers_Custom, getActiveSourceFiles_Custom,
     getFnRunViaNsExec, getFnIsAliveViaNsPs
 } from './helpers.js'
-/** @typedef {import('./index.js').NS} NS */
 // the purpose of the daemon is: it's our global starting point.
 // it handles several aspects of the game, primarily hacking for money.
 // since it requires a robust "execute arbitrarily" functionality

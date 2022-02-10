@@ -1,5 +1,4 @@
 import { getNsDataThroughFile, formatMoney, formatDuration, disableLogs, formatNumberShort, getActiveSourceFiles_Custom } from './helpers.js'
-/** @typedef {import('./index.js').NS} NS*/
 
 const interval = 5000; // Uodate (tick) this often
 const minTaskWorkTime = 59000; // Sleeves assigned a new task should stick to it for at least this many milliseconds
