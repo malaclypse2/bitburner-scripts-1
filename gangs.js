@@ -1,4 +1,4 @@
-import { formatMoney, formatNumberShort, getNsDataThroughFile, getActiveSourceFiles, runCommand, tryGetBitNodeMultipliers } from './helpers.js'
+import { formatMoney, formatNumberShort, getNsDataThroughFile, getActiveSourceFiles, runCommand, tryGetBitNodeMultipliers, formatDuration } from './helpers.js'
 
 // Global constants
 const updateInterval = 200;
@@ -8,14 +8,16 @@ const wantedPenaltyThreshold = 0.0001; // Don't let the wanted penalty get worse
 
 // Territory-related variables
 const gangsByPower = ["Speakers for the Dead", "The Dark Army", "The Syndicate", "Slum Snakes", /* Hack gangs don't scale as far */ "The Black Hand", /* "NiteSec" Been there, not fun. */]
-const territoryEngageThreshold = 0.70; // Minimum average win chance (of gangs with territory) before we engage other clans
+const territoryEngageThreshold = 0.60; // Minimum average win chance (of gangs with territory) before we engage other clans
 let territoryTickDetected = false;
 let territoryTickTime = 20000; // Est. milliseconds until territory *ticks*. Can vary if processing offline time
+let territoryTickWaitPadding = 1000; // Start waiting this many milliseconds before we think territory will tick, in case it ticks early
 let territoryNextTick = null; // The next time territory will tick
 let isReadyForNextTerritoryTick = false;
 let warfareFinished = false;
 let lastTerritoryPower = 0;
 let lastOtherGangInfo = null;
+let lastLoopTime = Date.now();
 
 // Crime activity-related variables TODO all tasks list to evaluate
 const crimes = ["Mug People", "Deal Drugs", "Strongarm Civilians", "Run a Con", "Armed Robbery", "Traffick Illegal Arms", "Threaten & Blackmail", "Human Trafficking", "Terrorism",
@@ -148,35 +150,42 @@ async function initialize(ns) {
 async function mainLoop(ns) {
     // Update gang information (specifically monitoring gang power to see when territory ticks)
     const myGangInfo = ns.gang.getGangInformation(); //await getNsDataThroughFile(ns, 'ns.gang.getGangInformation()', '/Temp/gang-info.txt');
-    // If territory is about to tick, quick - set everyone to do "territory warfare"! Once we hit 100% territory, there's no need to keep swapping members to warfare
-    if (!warfareFinished && !isReadyForNextTerritoryTick && territoryTickDetected && (Date.now() + updateInterval >= territoryNextTick)) {
-        isReadyForNextTerritoryTick = true;
-        await updateMemberActivities(ns, null, "Territory Warfare");
-    } else if (!territoryTickDetected) { // Detect the first territory tick by watching for other gang's territory power to update.
+    const thisLoopStart = Date.now();
+    if (!territoryTickDetected) { // Detect the first territory tick by watching for other gang's territory power to update.
         const otherGangInfo = await getNsDataThroughFile(ns, 'ns.gang.getOtherGangInformation()', '/Temp/gang-other-gang-info.txt'); // Returns dict of { [gangName]: { "power": Number, "territory": Number } }
         if (lastOtherGangInfo != null && JSON.stringify(otherGangInfo) != JSON.stringify(lastOtherGangInfo)) {
-            territoryNextTick = Date.now() + territoryTickTime - updateInterval /* Start waiting early */;
+            territoryNextTick = lastLoopTime + territoryTickTime;
             territoryTickDetected = true;
-            log(ns, `WARNING: Others gangs power updated - territory tick happened before we were ready!`, 'warning');
-        }
+            log(ns, `INFO: Others gangs power updated (sometime in the past ${formatDuration(thisLoopStart - lastLoopTime)}. ` +
+                `Will start waiting for next tick in: ${formatDuration(territoryNextTick - thisLoopStart - territoryTickWaitPadding)}`, 'warning');
+        } else if (lastOtherGangInfo == null)
+            log(ns, `INFO: Waiting to detect territory to tick. (Waiting for other gangs' power to update.) Will check every ${formatDuration(updateInterval)}...`);
         lastOtherGangInfo = otherGangInfo;
     }
+    // If territory is close to ticking, quick - set everyone to do "territory warfare"! Once we hit 100% territory, there's no need to keep swapping members to warfare
+    if (!warfareFinished && !isReadyForNextTerritoryTick && (thisLoopStart + updateInterval + territoryTickWaitPadding >= territoryNextTick)) { // Start 1 second early to be safe
+        isReadyForNextTerritoryTick = true;
+        await updateMemberActivities(ns, null, "Territory Warfare", myGangInfo);
+    }
     // Detect if territory power has been updated in the last tick (or if we have no power, assume it has ticked and we just haven't generated power yet)
-    if ((isReadyForNextTerritoryTick && myGangInfo.power != lastTerritoryPower) || (Date.now() > territoryNextTick + 5000 /* Wait up to 5 additional seconds in case time was wonkey */)) {
+    if ((isReadyForNextTerritoryTick && myGangInfo.power != lastTerritoryPower) || (thisLoopStart > territoryNextTick + 5000 /* Wait up to 5 additional seconds in case time was wonkey */)) {
         await onTerritoryTick(ns, myGangInfo); //Do most things only once per territory tick
         isReadyForNextTerritoryTick = false;
         lastTerritoryPower = myGangInfo.power;
-    }
+    } else if (isReadyForNextTerritoryTick)
+        log(ns, `INFO: Waiting for territory to tick. (Waiting for gang power to change from ${formatNumberShort(lastTerritoryPower)}. ETA: ${formatDuration(territoryNextTick - thisLoopStart)}`);
+    lastLoopTime = thisLoopStart; // Due to periodic lag, we must track the last time we checked, can't assume it was `updateInterval` ago.
 }
 
 /** @param {NS} ns 
  * Do some things only once per territory tick **/
 async function onTerritoryTick(ns, myGangInfo) {
-    territoryNextTick = Date.now() - updateInterval + territoryTickTime; // Reset the time the next tick will occur
-    if (lastTerritoryPower != myGangInfo.power)
+    territoryNextTick = lastLoopTime + territoryTickTime; // Reset the time the next tick will occur
+    if (lastTerritoryPower != myGangInfo.power) {
         log(ns, `Territory power updated from ${formatNumberShort(lastTerritoryPower)} to ${formatNumberShort(myGangInfo.power)}.`)
-    else if (!warfareFinished) {
+    } else if (!warfareFinished) {
         log(ns, `WARNING: Power stats weren't updated, assuming we've lost track of territory tick`, 'warning');
+        territoryNextTick -= updateInterval; // Prep for the next tick a little earlier, in case we just lagged behind the tick by a bit.
         territoryTickDetected = false;
         lastOtherGangInfo = null;
     }
@@ -198,11 +207,14 @@ async function onTerritoryTick(ns, myGangInfo) {
 
 /** @param {NS} ns 
  * Consolidated logic for telling members what to do **/
-async function updateMemberActivities(ns, dictMemberInfo = null, forceTask = null) {
+async function updateMemberActivities(ns, dictMemberInfo = null, forceTask = null, myGangInfo = null) {
     const dictMembers = dictMemberInfo || (await getGangInfoDict(ns, myGangMembers, 'getMemberInformation'));
     const workOrders = [];
+    const maxMemberDefense = Math.max(...Object.values(dictMembers).map(m => m.def));
     for (const member of Object.values(dictMembers)) { // Set the desired activity of each member
         let task = forceTask ? forceTask : assignedTasks[member.name];
+        if (myGangInfo?.territoryClashChance > 0 && task == "Territory Warfare" && member.def < Math.min(10000, maxMemberDefense * 0.1))
+            task = assignedTasks[member.name]; // Hack: Spare low-defense members from engaging in in warfare since they have a higher chance of dying
         if (member.task != task) workOrders.push({ name: member.name, task }); // Only bother with the API call if this isn't their current task
     }
     if (workOrders.length == 0) return;
