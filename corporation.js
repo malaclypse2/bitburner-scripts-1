@@ -364,7 +364,7 @@ async function tryRaiseCapital(ns) {
         if (offer.round > 4) raisingCapital = 0;
         let willAccept = true;
         if (offer && offer.round <= 4) {
-            log(ns, `Considering raising private capital round ${offer.round}. Offered ${mf(offer.funds)} for ${nf(offer.shares)} shares.`);
+            log(ns, `  Considering raising private capital round ${offer.round}. Offered ${mf(offer.funds)} for ${nf(offer.shares)} shares.`);
 
             // Make sure all employees are happy.
             let satisfied = allEmployeesSatisfied(ns);
@@ -639,7 +639,7 @@ async function doManageDivision(ns, division, budget) {
             cost = ns.corporation.getResearchCost(division.name, researchType);
         } catch {}
         if (!hasResearch && researchToSpend >= cost) {
-            log(ns, `INFO: ${division. name} researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
+            log(ns, `INFO: ${division. name} division researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
             ns.corporation.research(division.name, researchType);
             researchToSpend -= cost;
         } else if (!hasResearch && cost !== Infinity) {
@@ -891,12 +891,12 @@ function createNewProduct(ns, division) {
     let productname = `${division.type}-${Math.log10(wantToSpend).toFixed(2)}`;
     try {
         ns.corporation.makeProduct(division.name, hqCity, productname, wantToSpend / 2, wantToSpend / 2);
-        log(ns, `Creating new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
+        log(ns, `SUCCESS: Created new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
         spent += wantToSpend;
         extraReserve = 0;
     } catch (e) {
         // If we fail to create the product, just reserve the money we want to spend.
-        log(ns, `Reserving budget of ${mf(wantToSpend)} for next product.`);
+        log(ns, `  Reserving budget of ${mf(wantToSpend)} for next product.`);
         extraReserve = wantToSpend;
     }
     return spent;
