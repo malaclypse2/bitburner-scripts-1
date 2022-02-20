@@ -31,7 +31,7 @@ export const argsSchema = [
     ['mock', false], // Run the task assignment queue, but don't actually spend any money.
     ['price-discovery-only', false], // Don't do any auto-buying, just try to keep the sale price balanced as high as possible. (Emulating TA2 as best we can)
     ['first', 'Agriculture'], // What should we use for our first division? Agriculture works well, but others should be fine too.
-    ['second', 'RealEstate'], // What should we prefer for our second division? If we can't afford it, we'll buy what we can afford instead.
+    ['second', 'Pharmaceutical'], // What should we prefer for our second division? If we can't afford it, we'll buy what we can afford instead.
 ];
 
 const desiredDivisions = 2; // One Material division to kickstart things, then a product division to really make money.
@@ -711,7 +711,7 @@ async function doManageDivision(ns, division, budget) {
         let warehouse = ns.corporation.getWarehouse(division.name, city);
         // TODO: How much do we care about expanding the warehouse? We should base it on how much of an impact more materials would have.
         cost = ns.corporation.getUpgradeWarehouseCost(division.name, city);
-        if (cost < budget * 0.25) {
+        if (cost < budget * 0.15) {
             tasks.push(new Task(`Buy warehouse space for ${division.name}/${city}`, () => ns.corporation.upgradeWarehouse(division.name, city), cost, 20));
         }
 
