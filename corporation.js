@@ -2,7 +2,6 @@
  * Set up and run a corporation. Note that access to the corporation API costs tons of RAM.
  *
  * TODO: Make daemon.js reserve memory for a corporate script to run someplace if we have enough RAM.
- * TODO: Given the memory used, would it make more sense to run this script occassionally -- like every 10 seconds, instead of with a loop?
  */
 
 import { formatMoney, formatNumberShort, getActiveSourceFiles } from './helpers.js';
@@ -185,7 +184,7 @@ export async function main(ns) {
         // Sleep until the next time we go into the 'START' phase
         await sleepWhileNotInStartState(ns, true);
 
-        log(ns, '');
+        if (verbose) log(ns, ``);
     }
 }
 
@@ -207,6 +206,8 @@ async function doManageCorporation(ns) {
 
     myCorporation = ns.corporation.getCorporation();
     let budget = myCorporation.funds - options['reserve-amount'] - extraReserve;
+    // If we're making more than $1 sextillion / sec, we need to stop. The game gets slow if we start employing too many people.
+    if (myCorporation.revenue > 1e21) budget = 0;
     budget = Math.max(0, budget);
     if (verbose) log(ns, ``);
     if (verbose) log(ns, `Working with a corporate budget of ${mf(budget)}`);
@@ -317,6 +318,12 @@ async function doManageCorporation(ns) {
         }
     }
 
+    // If we have all of our divisions bought, it's worth spending hashes on research.
+    if (myCorporation.divisions.length >= desiredDivisions) {
+        if (options['can-spend-hashes'])
+            await doSpendHashes(ns, 'Exchange for Corporation Research');
+    }
+
     /**
      * We've looked at the at the corporation, and come up with a list of tasks we'd like to do. Now, figure out
      * which ones we can actually accomplish on our budget.
@@ -356,7 +363,8 @@ async function doManageCorporation(ns) {
  */
 async function tryRaiseCapital(ns) {
     // First, spend hacknet hashes.
-    if (options['spend-hashes']) await doSpendHashes(ns, 'Sell for Corporation Funds');
+    if (options['can-spend-hashes'] && myCorporation.funds < 10e9) 
+        await doSpendHashes(ns, 'Sell for Corporation Funds');
     // If we're not public, then raise private funding.
     if (!myCorporation.public) {
         let offer = ns.corporation.getInvestmentOffer();
@@ -754,9 +762,8 @@ async function doManageDivision(ns, division, budget) {
         // Calculate the required free space for a production cycle's worth of Material and products.
         let warehouseSpaceRequiredForCycle = getReservedWarehouseSpace(ns, industry, division, city);
 
-        // TODO The amounts we buy still needs to be tuned, probably based on corporate income or something?
-        // We don't want to drive the corp too deeply negative with material purchases, or else nothing else
-        // will ever be bought, and employees will never get happy.
+        // We don't want to drive the corp too deeply negative with material purchases too soon, or 
+        // else nothing else will ever be bought, and employees will never get happy.
         let freeSpace = warehouse.size - warehouse.sizeUsed;
         let warehouseSpaceAvailable = freeSpace - warehouseSpaceRequiredForCycle;
         let tolerance = warehouseSpaceRequiredForCycle * 0.01;
@@ -1101,11 +1108,12 @@ async function doPriceDiscovery(ns) {
             let newPrice = `MP*${newMultiplier.toFixed(3)}`;
             // if (verbose) log(ns, `${prefix}Votes: ${votes.map((n) => nf(n)).join(', ')}.`);
             let sChange = percentChange(lastPriceMultiplier, newMultiplier);
-            if (verbose) log(ns, `Adjusting '${product.name}' price from ${sPrice} to ${newPrice} (${sChange}).`);
+            if (verbose) log(ns, `    Adjusting '${product.name}' price from ${sPrice} to ${newPrice} (${sChange}).`);
             ns.corporation.sellProduct(division.name, hqCity, product.name, 'MAX', newPrice, true);
             prevProductMultiplier = newMultiplier;
         } // end for-products
     } // end for-divisions
+    if (verbose) log(ns, ``);
 }
 
 /**
@@ -1135,7 +1143,7 @@ async function doSpendHashes(ns, spendOn) {
             let numHashes = ns.hacknet.numHashes();
             ns.hacknet.spendHashes(spendOn);
             spentHashes = numHashes - ns.hacknet.numHashes();
-            if (spentHashes > 0) log(ns, `Spent ${formatNumberShort(Math.round(spentHashes / 100) * 100)} hashes on ${shortName}`, 'success');
+            if (spentHashes > 0) log(ns, `  Spent ${nf(Math.round(spentHashes / 100) * 100)} hashes on ${shortName}`, 'success');
         } while (spentHashes > 0);
     }
 }

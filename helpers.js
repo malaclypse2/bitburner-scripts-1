@@ -219,17 +219,10 @@ export async function runCommand_Custom(ns, fnRun, command, fileName, verbose = 
     let script = `import { formatMoney, formatNumberShort, formatDuration, parseShortNumber, scanAllServers } fr` + `om '${getFilePath('helpers.js')}'\n` + `export async function main(ns) { try { ` + (verbose ? `let output = ${command}; ns.tprint(output)` : command) + `; } catch(err) { ns.tprint(String(err)); throw(err); } }`;
     fileName = fileName || `/Temp/${hashCode(command)}-command.js`;
     // To improve performance and save on garbage collection, we can skip writing this exact same script was previously written (common for repeatedly-queried data)
-    if (ns.read(fileName) != script) await ns.write(fileName, script, 'w');
-    return await autoRetry(
-        ns,
-        () => fnRun(fileName, ...args),
-        (temp_pid) => temp_pid !== 0,
-        () => `Run command returned no pid. Destination: ${fileName} Command: ${command}\nEnsure you have sufficient free RAM to run this temporary script.`,
-        maxRetries,
-        retryDelayMs,
-        undefined,
-        verbose
-    );
+    if (ns.read(fileName) != script) await ns.write(fileName, script, "w");
+    return await autoRetry(ns, () => fnRun(fileName, ...args), temp_pid => temp_pid !== 0,
+        () => `Run command returned no pid.\n  Destination: ${fileName}\n  Command: ${command}\nEnsure you have sufficient free RAM to run this temporary script.`,
+        maxRetries, retryDelayMs, undefined, verbose);
 }
 
 /**
@@ -366,7 +359,4 @@ export async function tryGetBitNodeMultipliers_Custom(ns, fnGetNsDataThroughFile
 
 /** @param {NS} ns
  * Returns a helpful error message if we forgot to pass the ns instance to a function */
-export function checkNsInstance(ns, fnName = 'this function') {
-    if (!ns.print) throw `The first argument to ${fnName} should be a 'ns' instance.`;
-    return ns;
-}
+export function checkNsInstance(ns, fnName = "this function") { if (!ns.print) throw `The first argument to ${fnName} should be a 'ns' instance.`; return ns; }
