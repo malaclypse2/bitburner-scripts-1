@@ -185,7 +185,7 @@ export async function main(ns) {
         // Sleep until the next time we go into the 'START' phase
         await sleepWhileNotInStartState(ns, true);
 
-        log(ns, '');
+        if (verbose) log(ns, '');
     }
 }
 
@@ -259,7 +259,7 @@ async function doManageCorporation(ns) {
         } else if (['Smart Factories', 'Smart Storage'].includes(upgrade) && cost < budget * 0.1) {
             // More storage means more materials, which drives more production. More production means more sales.
             tasks.push(new Task(`Upgrading '${upgrade}' to level ${nextLevel}`, () => ns.corporation.levelUpgrade(upgrade), cost, 10));
-        } else if (cost < budget * 0.01) {
+        } else if (cost < budget * 0.05) {
             // Upgrade other stuff too, as long as it's cheap compared to our budget.
             tasks.push(new Task(`Upgrading '${upgrade}' to level ${nextLevel}`, () => ns.corporation.levelUpgrade(upgrade), cost, 1));
         }
@@ -639,7 +639,7 @@ async function doManageDivision(ns, division, budget) {
             cost = ns.corporation.getResearchCost(division.name, researchType);
         } catch {}
         if (!hasResearch && researchToSpend >= cost) {
-            log(ns, `INFO: Buying reasearch project ${researchType} for ${nf(cost)} research points.`, 'info');
+            log(ns, `INFO: ${division. name} researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
             ns.corporation.research(division.name, researchType);
             researchToSpend -= cost;
         } else if (!hasResearch && cost !== Infinity) {
