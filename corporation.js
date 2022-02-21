@@ -909,7 +909,7 @@ function createNewProduct(ns, division) {
     let productname = `${division.type}-${Math.log10(wantToSpend).toFixed(2)}`;
     try {
         ns.corporation.makeProduct(division.name, hqCity, productname, wantToSpend / 2, wantToSpend / 2);
-        log(ns, `SUCCESS: Created new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
+        log(ns, `SUCCESS: Starting development of new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
         spent += wantToSpend;
         extraReserve = 0;
     } catch (e) {
