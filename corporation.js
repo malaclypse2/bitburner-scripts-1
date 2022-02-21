@@ -639,7 +639,7 @@ async function doManageDivision(ns, division, budget) {
             cost = ns.corporation.getResearchCost(division.name, researchType);
         } catch {}
         if (!hasResearch && researchToSpend >= cost) {
-            log(ns, `INFO: ${division. name} division researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
+            log(ns, `INFO: ${division.name} division researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
             ns.corporation.research(division.name, researchType);
             researchToSpend -= cost;
         } else if (!hasResearch && cost !== Infinity) {
@@ -688,11 +688,11 @@ async function doManageDivision(ns, division, budget) {
         let seats = 15; // Grow by officeSize when small, then by 15
         seats = Math.min(seats, officeSize);
         let cost = ns.corporation.getOfficeSizeUpgradeCost(division.name, city, seats);
-        if (industry.makesProducts && city === hqCity && cost < budget * 0.9) {
+        if (industry.makesProducts && city === hqCity && cost < budget * 0.95) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
-        } else if (industry.makesProducts && city !== hqCity && cost < budget * 0.1) {
+        } else if (industry.makesProducts && city !== hqCity && cost < budget * 0.05) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
-        } else if (!industry.makesProducts && cost < budget * 0.4) {
+        } else if (!industry.makesProducts && cost < budget * 0.40) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
         }
 
@@ -711,7 +711,7 @@ async function doManageDivision(ns, division, budget) {
         let warehouse = ns.corporation.getWarehouse(division.name, city);
         // TODO: How much do we care about expanding the warehouse? We should base it on how much of an impact more materials would have.
         cost = ns.corporation.getUpgradeWarehouseCost(division.name, city);
-        if (cost < budget * 0.15) {
+        if (cost < budget * 0.10) {
             tasks.push(new Task(`Buy warehouse space for ${division.name}/${city}`, () => ns.corporation.upgradeWarehouse(division.name, city), cost, 20));
         }
 
@@ -846,9 +846,21 @@ function getReservedWarehouseSpace(ns, industry, division, city) {
 
     // If we don't have automatic price discovery, we'll need some extra free space.
     let hasMarketTA2 = ns.corporation.hasResearched(division.name, 'Market-TA.II');
-    if (!hasMarketTA2) warehouseSpaceRequiredForCycle *= 3;
-    else warehouseSpaceRequiredForCycle *= 1.5;
+    if (industry.makesProducts && !hasMarketTA2) 
+        warehouseSpaceRequiredForCycle *= 2.5;
+    else warehouseSpaceRequiredForCycle *= 1.25;
 
+    // We don't need to actually reserve space already being taken up by stuff we produce.
+    for (const matName of industry.prodMats) {
+        let inStock = ns.corporation.getMaterial(division.name, city, matName).qty;
+        warehouseSpaceRequiredForCycle -= materialSizes[matName] * inStock;
+    }
+    for (const prodName of division.products) {
+        try {
+            let inStock = ns.corporation.getProduct(division.name, prodName).cityData[city][0];
+            warehouseSpaceRequiredForCycle -= rawMaterialSize * inStock;
+        } catch {}
+    }
     return warehouseSpaceRequiredForCycle;
 }
 
@@ -1032,7 +1044,7 @@ async function doPriceDiscovery(ns) {
         // Materials are easy. Just sell them for Market price.
         for (const materialName of industry.prodMats) {
             for (const city of division.cities) {
-                ns.corporation.sellMaterial(division.name, city, materialName, 'PROD', 'MP');
+                ns.corporation.sellMaterial(division.name, city, materialName, 'MAX', 'MP');
             }
         }
 
