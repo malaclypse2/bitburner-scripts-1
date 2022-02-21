@@ -30,7 +30,7 @@ export const argsSchema = [
     ['mock', false], // Run the task assignment queue, but don't actually spend any money.
     ['price-discovery-only', false], // Don't do any auto-buying, just try to keep the sale price balanced as high as possible. (Emulating TA2 as best we can)
     ['first', 'Agriculture'], // What should we use for our first division? Agriculture works well, but others should be fine too.
-    ['second', 'RealEstate'], // What should we prefer for our second division? If we can't afford it, we'll buy what we can afford instead.
+    ['second', 'Pharmaceutical'], // What should we prefer for our second division? If we can't afford it, we'll buy what we can afford instead.
 ];
 
 const desiredDivisions = 2; // One Material division to kickstart things, then a product division to really make money.
@@ -260,7 +260,7 @@ async function doManageCorporation(ns) {
         } else if (['Smart Factories', 'Smart Storage'].includes(upgrade) && cost < budget * 0.1) {
             // More storage means more materials, which drives more production. More production means more sales.
             tasks.push(new Task(`Upgrading '${upgrade}' to level ${nextLevel}`, () => ns.corporation.levelUpgrade(upgrade), cost, 10));
-        } else if (cost < budget * 0.01) {
+        } else if (cost < budget * 0.05) {
             // Upgrade other stuff too, as long as it's cheap compared to our budget.
             tasks.push(new Task(`Upgrading '${upgrade}' to level ${nextLevel}`, () => ns.corporation.levelUpgrade(upgrade), cost, 1));
         }
@@ -372,7 +372,7 @@ async function tryRaiseCapital(ns) {
         if (offer.round > 4) raisingCapital = 0;
         let willAccept = true;
         if (offer && offer.round <= 4) {
-            log(ns, `Considering raising private capital round ${offer.round}. Offered ${mf(offer.funds)} for ${nf(offer.shares)} shares.`);
+            log(ns, `  Considering raising private capital round ${offer.round}. Offered ${mf(offer.funds)} for ${nf(offer.shares)} shares.`);
 
             // Make sure all employees are happy.
             let satisfied = allEmployeesSatisfied(ns);
@@ -647,7 +647,7 @@ async function doManageDivision(ns, division, budget) {
             cost = ns.corporation.getResearchCost(division.name, researchType);
         } catch {}
         if (!hasResearch && researchToSpend >= cost) {
-            log(ns, `INFO: Buying reasearch project ${researchType} for ${nf(cost)} research points.`, 'info');
+            log(ns, `INFO: ${division.name} division researching ${researchType} for ${nf(cost)} of ${nf(division.research)} research points.`, 'info');
             ns.corporation.research(division.name, researchType);
             researchToSpend -= cost;
         } else if (!hasResearch && cost !== Infinity) {
@@ -696,9 +696,9 @@ async function doManageDivision(ns, division, budget) {
         let seats = 15; // Grow by officeSize when small, then by 15
         seats = Math.min(seats, officeSize);
         let cost = ns.corporation.getOfficeSizeUpgradeCost(division.name, city, seats);
-        if (industry.makesProducts && city === hqCity && cost < budget * 0.9) {
+        if (industry.makesProducts && city === hqCity && cost < budget * 0.95) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
-        } else if (industry.makesProducts && city !== hqCity && cost < budget * 0.1) {
+        } else if (industry.makesProducts && city !== hqCity && cost < budget * 0.05) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
         } else if (!industry.makesProducts && cost < budget * 0.4) {
             tasks.push(new Task(`Buy space for ${seats} more employees of ${division.name}/${city}`, () => upgradeOfficeSize(ns, division.name, city, seats), cost, 70));
@@ -719,7 +719,7 @@ async function doManageDivision(ns, division, budget) {
         let warehouse = ns.corporation.getWarehouse(division.name, city);
         // TODO: How much do we care about expanding the warehouse? We should base it on how much of an impact more materials would have.
         cost = ns.corporation.getUpgradeWarehouseCost(division.name, city);
-        if (cost < budget * 0.25) {
+        if (cost < budget * 0.1) {
             tasks.push(new Task(`Buy warehouse space for ${division.name}/${city}`, () => ns.corporation.upgradeWarehouse(division.name, city), cost, 20));
         }
 
@@ -853,9 +853,20 @@ function getReservedWarehouseSpace(ns, industry, division, city) {
 
     // If we don't have automatic price discovery, we'll need some extra free space.
     let hasMarketTA2 = ns.corporation.hasResearched(division.name, 'Market-TA.II');
-    if (!hasMarketTA2) warehouseSpaceRequiredForCycle *= 3;
-    else warehouseSpaceRequiredForCycle *= 1.5;
+    if (industry.makesProducts && !hasMarketTA2) warehouseSpaceRequiredForCycle *= 2.5;
+    else warehouseSpaceRequiredForCycle *= 1.25;
 
+    // We don't need to actually reserve space already being taken up by stuff we produce.
+    for (const matName of industry.prodMats) {
+        let inStock = ns.corporation.getMaterial(division.name, city, matName).qty;
+        warehouseSpaceRequiredForCycle -= materialSizes[matName] * inStock;
+    }
+    for (const prodName of division.products) {
+        try {
+            let inStock = ns.corporation.getProduct(division.name, prodName).cityData[city][0];
+            warehouseSpaceRequiredForCycle -= rawMaterialSize * inStock;
+        } catch {}
+    }
     return warehouseSpaceRequiredForCycle;
 }
 
@@ -898,12 +909,12 @@ function createNewProduct(ns, division) {
     let productname = `${division.type}-${Math.log10(wantToSpend).toFixed(2)}`;
     try {
         ns.corporation.makeProduct(division.name, hqCity, productname, wantToSpend / 2, wantToSpend / 2);
-        log(ns, `Creating new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
+        log(ns, `SUCCESS: Created new product '${productname}' for ${mf(wantToSpend)}.`, 'info', true);
         spent += wantToSpend;
         extraReserve = 0;
     } catch (e) {
         // If we fail to create the product, just reserve the money we want to spend.
-        log(ns, `Reserving budget of ${mf(wantToSpend)} for next product.`);
+        log(ns, `  Reserving budget of ${mf(wantToSpend)} for next product.`);
         extraReserve = wantToSpend;
     }
     return spent;
@@ -1039,7 +1050,7 @@ async function doPriceDiscovery(ns) {
         // Materials are easy. Just sell them for Market price.
         for (const materialName of industry.prodMats) {
             for (const city of division.cities) {
-                ns.corporation.sellMaterial(division.name, city, materialName, 'PROD', 'MP');
+                ns.corporation.sellMaterial(division.name, city, materialName, 'MAX', 'MP');
             }
         }
 
